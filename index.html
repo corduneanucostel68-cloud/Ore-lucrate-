@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#172033">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.json">
+<title>Ore lucrate</title>
+<style>
+:root{--ink:#172033;--muted:#667085;--paper:#fffdf7;--border:#d9dee7;--bg:#eef1f5}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+.wrap{max-width:1050px;margin:auto;padding:18px 14px 50px}
+header{background:var(--paper);border:1px solid #ddd8ca;border-radius:20px;padding:22px;box-shadow:0 8px 30px #0000000b;margin-bottom:14px}
+h1{margin:0 0 5px;font-size:29px}.sub{margin:0;color:var(--muted)}
+.card{background:#fff;border:1px solid var(--border);border-radius:17px;padding:17px;margin-bottom:14px}
+.form{display:grid;grid-template-columns:1fr 1fr 1fr 1.3fr;gap:10px}
+label{display:block;font-size:13px;font-weight:750;margin-bottom:5px}
+input,select,button{font:inherit}input,select{width:100%;padding:11px;border:1px solid #cbd2dc;border-radius:10px;background:#fff}
+.pausebox{grid-column:1/-1;display:flex;gap:12px;align-items:center;flex-wrap:wrap;padding:11px 12px;background:#f7f8fa;border-radius:11px}
+.pausebox label{margin:0;display:flex;align-items:center;gap:8px}.pausebox input[type=checkbox]{width:18px;height:18px}.pause-min{width:110px!important}
+.form-actions{grid-column:1/-1;display:flex;gap:9px}.primary{background:#172033;color:#fff}.secondary{background:#eef1f5;color:#172033}
+button{border:0;border-radius:10px;padding:11px 15px;font-weight:750;cursor:pointer}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}.stat{background:#f7f8fa;border-radius:12px;padding:13px}.stat b{display:block;font-size:21px}.stat span{font-size:12px;color:var(--muted)}
+.toolbar{display:flex;justify-content:space-between;gap:10px;align-items:end;flex-wrap:wrap}.month input{width:auto}
+.tablewrap{overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:760px}th,td{padding:11px 8px;border-bottom:1px solid #edf0f3;text-align:left}th{font-size:12px;color:var(--muted)}
+.badge{display:inline-block;padding:4px 8px;border-radius:999px;background:#f0f2f5;font-size:12px}.actions button{padding:7px 9px;margin-right:4px}.empty{text-align:center;color:var(--muted);padding:25px}
+.note{font-size:12px;color:var(--muted);margin:10px 0 0}
+@media(max-width:760px){.form{grid-template-columns:1fr 1fr}.stats{grid-template-columns:1fr 1fr}.toolbar{align-items:stretch}.form-actions button{flex:1}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<h1>⏱️ Ore lucrate</h1>
+<p class="sub">Ține evidența zilnică a programului, pauzelor și locului de muncă.</p>
+</header>
+
+<section class="card">
+<form id="form" class="form">
+<div><label>Data</label><input id="date" type="date" required></div>
+<div><label>Început</label><input id="start" type="time" required></div>
+<div><label>Sfârșit</label><input id="end" type="time" required></div>
+<div><label>Loc / lucrare</label><input id="place" placeholder="ex. Bekkevoort"></div>
+
+<div class="pausebox">
+<label><input id="hasPause" type="checkbox"> Am avut pauză</label>
+<label>Durata pauzei <input id="pause" class="pause-min" type="number" min="0" step="5" value="30"> minute</label>
+<span id="pauseHint" class="note">Dacă nu bifezi, nu se scade nicio pauză.</span>
+</div>
+
+<div class="form-actions">
+<button class="primary" id="save" type="submit">Adaugă ziua</button>
+<button class="secondary" id="cancel" type="button" style="display:none">Anulează</button>
+</div>
+</form>
+<p class="note">Poți alege pentru fiecare zi separat dacă ai avut pauză. Totalul brut = intervalul complet; totalul net = intervalul minus pauza introdusă.</p>
+</section>
+
+<section class="card">
+<div class="toolbar">
+<div class="month"><label>Luna</label><input id="month" type="month"></div>
+<div>
+<button class="secondary" id="export">Exportă CSV</button>
+<button class="secondary" id="clear">Șterge luna</button>
+</div>
+</div>
+<br>
+<div class="stats">
+<div class="stat"><b id="gross">0 h</b><span>Total brut</span></div>
+<div class="stat"><b id="net">0 h</b><span>Total net</span></div>
+<div class="stat"><b id="days">0</b><span>Zile lucrate</span></div>
+<div class="stat"><b id="avg">0 h</b><span>Medie netă / zi</span></div>
+</div>
+</section>
+
+<section class="card">
+<div class="tablewrap">
+<table>
+<thead><tr><th>Data</th><th>Program</th><th>Pauză</th><th>Brut</th><th>Net</th><th>Loc / lucrare</th><th>Acțiuni</th></tr></thead>
+<tbody id="rows"></tbody>
+</table>
+</div>
+<div id="empty" class="empty">Nu există zile pentru luna selectată.</div>
+</section>
+</div>
+
+<script>
+const KEY='ore_lucrate_v2';
+let data=JSON.parse(localStorage.getItem(KEY)||'[]');
+let editing=null;
+const $=x=>document.getElementById(x);
+const pad=n=>String(n).padStart(2,'0');
+const now=new Date();
+$('date').value=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+$('month').value=`${now.getFullYear()}-${pad(now.getMonth()+1)}`;
+
+function mins(a,b){let [h,m]=a.split(':').map(Number),[H,M]=b.split(':').map(Number);let x=h*60+m,y=H*60+M;if(y<x)y+=1440;return y-x}
+function fmt(x){let h=Math.floor(x/60),m=x%60;return m?`${h} h ${m} min`:`${h} h`}
+function esc(s){return String(s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function net(e){return Math.max(0,mins(e.start,e.end)-(e.hasPause?Number(e.pause||0):0))}
+function save(){localStorage.setItem(KEY,JSON.stringify(data))}
+function render(){
+ let month=$('month').value,list=data.filter(e=>e.date.startsWith(month)).sort((a,b)=>a.date.localeCompare(b.date));
+ let gross=list.reduce((s,e)=>s+mins(e.start,e.end),0), n=list.reduce((s,e)=>s+net(e),0);
+ $('gross').textContent=fmt(gross);$('net').textContent=fmt(n);$('days').textContent=list.length;$('avg').textContent=list.length?fmt(Math.round(n/list.length)):'0 h';
+ $('rows').innerHTML=list.map(e=>`<tr>
+ <td>${e.date.split('-').reverse().join('.')}</td><td>${e.start}–${e.end}</td>
+ <td>${e.hasPause?`<span class="badge">${e.pause} min</span>`:'Fără pauză'}</td>
+ <td>${fmt(mins(e.start,e.end))}</td><td><b>${fmt(net(e))}</b></td><td>${esc(e.place)}</td>
+ <td class="actions"><button class="secondary" onclick="edit('${e.id}')">Editează</button><button class="secondary" onclick="del('${e.id}')">Șterge</button></td></tr>`).join('');
+ $('empty').style.display=list.length?'none':'block';
+}
+$('hasPause').addEventListener('change',()=>{$('pause').disabled=!$('hasPause').checked});
+$('pause').disabled=true;
+$('form').addEventListener('submit',ev=>{
+ ev.preventDefault();
+ let st=$('start').value,en=$('end').value;
+ if(!st||!en||mins(st,en)<=0){alert('Verifică orele de început și sfârșit.');return}
+ let e={id:editing||crypto.randomUUID(),date:$('date').value,start:st,end:en,place:$('place').value.trim(),hasPause:$('hasPause').checked,pause:$('hasPause').checked?Number($('pause').value||0):0};
+ data=data.filter(x=>x.id!==e.id);data.push(e);save();$('month').value=e.date.slice(0,7);resetForm();render();
+});
+function edit(id){let e=data.find(x=>x.id===id);if(!e)return;editing=id;$('date').value=e.date;$('start').value=e.start;$('end').value=e.end;$('place').value=e.place||'';$('hasPause').checked=!!e.hasPause;$('pause').value=e.pause||30;$('pause').disabled=!e.hasPause;$('save').textContent='Salvează';$('cancel').style.display='inline-block';scrollTo({top:0,behavior:'smooth'})}
+function resetForm(){editing=null;$('save').textContent='Adaugă ziua';$('cancel').style.display='none';$('place').value='';$('hasPause').checked=false;$('pause').disabled=true;$('pause').value=30}
+$('cancel').onclick=resetForm;
+window.del=id=>{if(confirm('Ștergi această zi?')){data=data.filter(e=>e.id!==id);save();render()}};
+$('month').onchange=render;
+$('clear').onclick=()=>{let m=$('month').value;if(confirm('Ștergi toate zilele din luna selectată?')){data=data.filter(e=>!e.date.startsWith(m));save();render()}};
+$('export').onclick=()=>{
+ let m=$('month').value,list=data.filter(e=>e.date.startsWith(m)).sort((a,b)=>a.date.localeCompare(b.date));
+ let csv='Data,Inceput,Sfarsit,Pauza minute,Total brut minute,Total net minute,Loc / lucrare\\n';
+ list.forEach(e=>csv+=`${e.date},${e.start},${e.end},${e.hasPause?e.pause:0},${mins(e.start,e.end)},${net(e)},"${esc(e.place).replaceAll('"','""')}"\\n`);
+ let blob=new Blob([csv],{type:'text/csv;charset=utf-8'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`ore-${m}.csv`;a.click();URL.revokeObjectURL(a.href);
+};
+render();
+</script>
+<script>if ("serviceWorker" in navigator) window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js"));</script>
+</body>
+</html>
